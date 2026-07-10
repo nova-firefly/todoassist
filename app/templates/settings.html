@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Settings — todoassist{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Todoist API token</h2>
+
+  {% if account %}
+    <p>
+      Connected: <strong>{{ account.full_name or account.email }}</strong>
+      <span class="muted">({{ account.email }})</span>
+    </p>
+    <form method="post" action="/settings/token/delete" class="inline">
+      <button class="danger" type="submit"
+        onclick="return confirm('Clear the stored Todoist token?');">
+        Disconnect
+      </button>
+    </form>
+  {% else %}
+    <p class="muted">Not connected yet.</p>
+  {% endif %}
+
+  <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
+
+  <form method="post" action="/settings/token">
+    <label for="token">Paste a Todoist API token</label>
+    <input type="password" id="token" name="token" required
+      placeholder="Todoist → Settings → Integrations → Developer → API token"
+      autocomplete="off">
+    <p class="muted" style="margin-top: 8px;">
+      Stored encrypted at rest with the container's Fernet key. Overwrites the
+      previous token.
+    </p>
+    <button type="submit">Save &amp; test connection</button>
+  </form>
+</div>
+
+{% endblock %}

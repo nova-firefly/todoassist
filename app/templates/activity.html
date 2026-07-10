@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Activity — todoassist{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Activity {% if module_filter %}<span class="muted">— {{ module_filter }}</span>{% endif %}</h2>
+  <p class="muted">
+    Last {{ events|length }} events (most recent first). Filter by module:
+    <a href="/activity">all</a> ·
+    <a href="/activity?module=recurring_hygiene">recurring_hygiene</a> ·
+    <a href="/activity?module=auth">auth</a>
+  </p>
+  {% if events %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time (UTC)</th><th>Module</th><th>Level</th><th>Action</th>
+          <th>Task</th><th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+          <tr>
+            <td>{{ e.ts }}</td>
+            <td>{{ e.module }}</td>
+            <td>
+              {% if e.level == 'error' %}<span class="badge err">error</span>
+              {% elif e.level == 'warning' %}<span class="badge dry">warn</span>
+              {% else %}<span class="badge off">info</span>{% endif %}
+            </td>
+            <td>{{ e.action }}</td>
+            <td>{% if e.task_id %}<code>{{ e.task_id }}</code>{% endif %}</td>
+            <td>{% if e.detail %}<pre>{{ e.detail }}</pre>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No events.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

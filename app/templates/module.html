@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Recurring hygiene — todoassist{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Recurring task hygiene</h2>
+  <p class="muted">
+    Detects recurring tasks whose next due date is more than <em>grace_days</em>
+    in the past. In <code>report</code> mode it just logs candidates. In
+    <code>reschedule</code> mode it moves each candidate's next due date to
+    <em>today</em> via the Todoist Sync API, which preserves the recurrence
+    rule.
+  </p>
+
+  {% if not has_token %}
+    <p><span class="badge err">no token</span> Add a Todoist token in <a href="/settings">Settings</a> first.</p>
+  {% endif %}
+
+  <form method="post" action="/modules/recurring-hygiene/config">
+    <div class="checkbox">
+      <input type="checkbox" id="enabled" name="enabled" {% if cfg.enabled %}checked{% endif %}>
+      <label for="enabled" style="margin: 0;">Enable scheduled runs</label>
+    </div>
+
+    <div class="checkbox">
+      <input type="checkbox" id="dry_run" name="dry_run" {% if cfg.dry_run %}checked{% endif %}>
+      <label for="dry_run" style="margin: 0;">Dry-run (log candidates only, never reschedule)</label>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="grace_days">Grace days</label>
+        <input type="number" id="grace_days" name="grace_days" min="0" max="365"
+          value="{{ cfg.grace_days }}" required>
+      </div>
+      <div>
+        <label for="action">Action</label>
+        <select id="action" name="action">
+          <option value="report" {% if cfg.action == 'report' %}selected{% endif %}>Report only</option>
+          <option value="reschedule" {% if cfg.action == 'reschedule' %}selected{% endif %}>Reschedule to today</option>
+        </select>
+      </div>
+      <div>
+        <label for="schedule_cron">Schedule (cron, UTC)</label>
+        <input type="text" id="schedule_cron" name="schedule_cron"
+          value="{{ cfg.schedule_cron }}" required>
+      </div>
+      <div>
+        <label for="keep_events_days">Keep event log (days)</label>
+        <input type="number" id="keep_events_days" name="keep_events_days" min="1" max="3650"
+          value="{{ cfg.keep_events_days }}" required>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <button type="submit">Save configuration</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Run now</h2>
+  <p class="muted">
+    Executes one pass immediately using the current configuration (respects
+    dry-run). Requires a Todoist token.
+  </p>
+  <form method="post" action="/modules/recurring-hygiene/run">
+    <button type="submit" {% if not has_token %}disabled{% endif %}>Run now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Module activity</h2>
+  {% if events %}
+    <table>
+      <thead><tr><th>Time (UTC)</th><th>Action</th><th>Task</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for e in events %}
+          <tr>
+            <td>{{ e.ts }}</td>
+            <td>{% if e.level == 'error' %}<span class="badge err">{{ e.action }}</span>{% else %}{{ e.action }}{% endif %}</td>
+            <td>{% if e.task_id %}<code>{{ e.task_id }}</code>{% endif %}</td>
+            <td>{% if e.detail %}<code>{{ e.detail }}</code>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No runs yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

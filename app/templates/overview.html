@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Overview — todoassist{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Todoist account</h2>
+  {% if account %}
+    <p>Connected as <strong>{{ account.full_name or account.email }}</strong> ({{ account.email }}).</p>
+    <a class="button secondary" href="/settings">Manage token</a>
+  {% else %}
+    <p class="muted">No Todoist API token configured.</p>
+    <a class="button" href="/settings">Add token</a>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recurring task hygiene</h2>
+  <p>
+    {% if module_config.enabled %}
+      <span class="badge on">enabled</span>
+    {% else %}
+      <span class="badge off">disabled</span>
+    {% endif %}
+    {% if module_config.dry_run %}
+      <span class="badge dry">dry-run</span>
+    {% endif %}
+    <span class="muted">
+      grace {{ module_config.grace_days }}d ·
+      action <code>{{ module_config.action }}</code> ·
+      cron <code>{{ module_config.schedule_cron }}</code>
+    </span>
+  </p>
+  <a class="button secondary" href="/modules/recurring-hygiene">Configure</a>
+</div>
+
+<div class="card">
+  <h2>Recent activity</h2>
+  {% if events %}
+    <table>
+      <thead><tr><th>Time (UTC)</th><th>Module</th><th>Action</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for e in events %}
+          <tr>
+            <td>{{ e.ts }}</td>
+            <td>{{ e.module }}</td>
+            <td>{% if e.level == 'error' %}<span class="badge err">{{ e.action }}</span>{% else %}{{ e.action }}{% endif %}</td>
+            <td>{% if e.detail %}<code>{{ e.detail }}</code>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:12px;"><a href="/activity">Full log →</a></p>
+  {% else %}
+    <p class="muted">No activity yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
