@@ -78,6 +78,30 @@ Cron expressions are the exception — validate those with
 `CronTrigger.from_crontab(...)` in the handler so we can return a 400 before
 persisting.
 
+## Planned modules
+
+Rough shape only — details firm up when work starts. Listed here so agents
+proposing new modules match direction rather than inventing orthogonal
+ideas. Not a commitment; drop or reshape as needed.
+
+- **ntfy notifications.** Observe-only. Watch Todoist state and push
+  notifications to an [ntfy](https://ntfy.sh) topic to *supplement* Todoist's
+  built-in reminders (e.g. digest of tasks due today at a chosen hour,
+  escalation when a P1 task is more than N hours overdue, nudges for stale
+  `waiting` items). Does not mutate Todoist. Adds one outbound HTTP dependency
+  (ntfy) plus a scheduled Todoist sync. Config: ntfy URL/topic, auth token,
+  which rules fire and when.
+- **Metadata enrichment.** Rule-driven label / priority / section /
+  deadline application. User defines rules in the UI (e.g. "tasks in
+  project X get label `@home`", "tasks with word 'call' → context
+  `@phone`", "overdue P2 → bump to P1"). Applied on schedule or on-demand.
+  This one mutates Todoist — dry-run first. Config: an ordered rule list,
+  each with a matcher and a set of mutations.
+
+Both fit the existing module contract. The metadata module will need new
+Todoist write calls beyond `item_update ... due: {string}` — add them to
+`todoist.py` one at a time as needed.
+
 ## Testing a module by hand
 
 Dry-run first — always. Recommended flow when developing:

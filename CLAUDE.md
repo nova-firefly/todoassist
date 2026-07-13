@@ -25,6 +25,12 @@ this app assumes any request that reaches it is authenticated.
   Todoist's Sync API `item_update` with `due: {string: "today"}` so the server
   re-parses against the existing rrule. Do **not** set `due.date` directly on
   recurring items — it destroys the recurrence.
+- **Configurable, not opinionated.** Modules must expose their behavior via
+  config (labels, projects, cadence, thresholds), not bake in workflow
+  choices. The user has no fixed workflow — the app should adapt to whatever
+  they set up. When defaults or example values are needed, prefer GTD
+  vocabulary (contexts like `@home`/`@computer`, statuses like `next`,
+  `waiting`, `someday`, `inbox`).
 
 ## Layout
 
