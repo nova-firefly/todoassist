@@ -1,11 +1,12 @@
 """Minimal Todoist API client.
 
 Only what the recurring-hygiene module + settings page need:
-  - GET  /sync/v9/sync          — pull tasks (full or delta)
-  - POST /sync/v9/sync          — command batch (item_update with due_string)
-  - GET  /sync/v9/user          — verify token, fetch account metadata
+  - GET  /api/v1/sync          — pull tasks (full or delta)
+  - POST /api/v1/sync          — command batch (item_update with due_string)
+  - GET  /api/v1/user          — verify token, fetch account metadata
 
-Sync API v9 docs: https://developer.todoist.com/sync/v9/
+Todoist retired the /sync/v9 endpoints (HTTP 410); the current URL prefix is
+/api/v1. Payload shape for /sync and /user is unchanged.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-BASE_URL = "https://api.todoist.com/sync/v9"
+BASE_URL = "https://api.todoist.com/api/v1"
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 
