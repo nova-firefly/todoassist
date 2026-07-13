@@ -13,7 +13,11 @@ concurrency:
 
 jobs:
   build-and-push:
-    runs-on: [self-hosted, nova, todoassist]
+    # GitHub-hosted: the self-hosted runners-socket-proxy blocks the `attach`
+    # request that buildx's docker-container driver needs (EXEC=0 by design).
+    # WUD handles the redeploy from the new GHCR digest, so no self-hosted
+    # step is required in this pipeline.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
