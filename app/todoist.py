@@ -4,6 +4,7 @@ Only what the recurring-hygiene module + settings page need:
   - GET  /api/v1/sync          — pull tasks (full or delta)
   - POST /api/v1/sync          — command batch (item_update with due_string)
   - GET  /api/v1/user          — verify token, fetch account metadata
+  - GET  /api/v1/tasks/filter  — filter-query scoped task pull
 
 Todoist retired the /sync/v9 endpoints (HTTP 410); the current URL prefix is
 /api/v1. Payload shape for /sync and /user is unchanged.
@@ -114,6 +115,42 @@ class TodoistClient:
         )
         raw_items = data.get("items", []) or []
         return [Task.from_api(t) for t in raw_items if not t.get("checked")]
+
+    def tasks_by_filter(self, query: str) -> list[Task]:
+        """Active tasks matching a Todoist filter query (e.g. ``#Work & @next``).
+
+        Uses ``/api/v1/tasks/filter`` and walks ``next_cursor`` until exhausted.
+        Completed tasks are excluded on the server side by this endpoint.
+        """
+        out: list[Task] = []
+        cursor: str | None = None
+        while True:
+            params: dict[str, str] = {"query": query, "limit": "200"}
+            if cursor:
+                params["cursor"] = cursor
+            data = self._request("GET", "/tasks/filter", params=params)
+            # Response shape: {"results": [...], "next_cursor": "..." | null}.
+            # Some deployments return the list directly — accept both.
+            if isinstance(data, list):
+                items = data
+                cursor = None
+            else:
+                items = data.get("results") or data.get("items") or []
+                cursor = data.get("next_cursor")
+            out.extend(Task.from_api(t) for t in items if not t.get("checked"))
+            if not cursor:
+                break
+        return out
+
+    def fetch_tasks(self, filter_query: str | None) -> list[Task]:
+        """Return active tasks, optionally scoped by a Todoist filter query.
+
+        Empty / whitespace-only ``filter_query`` falls back to the full Sync
+        pull. Modules that want optional filtering should call this instead of
+        picking between :meth:`all_tasks` and :meth:`tasks_by_filter` by hand.
+        """
+        q = (filter_query or "").strip()
+        return self.tasks_by_filter(q) if q else self.all_tasks()
 
     def reschedule_recurring_to_today(self, task_ids: Iterable[str]) -> dict:
         """Move a recurring task's next due date to today, preserving recurrence.
