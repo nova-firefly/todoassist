@@ -228,6 +228,7 @@ async def module_save_config(
     action: str = Form(...),
     schedule_cron: str = Form(...),
     keep_events_days: int = Form(...),
+    filter_query: str = Form(""),
 ) -> RedirectResponse:
     # Validate cron expression before storing
     try:
@@ -242,6 +243,7 @@ async def module_save_config(
             "action": action,
             "schedule_cron": schedule_cron,
             "keep_events_days": keep_events_days,
+            "filter_query": filter_query,
         }
     )
     reload_schedule()

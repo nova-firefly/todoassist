@@ -53,6 +53,17 @@
     </div>
 
     <div style="margin-top: 16px;">
+      <label for="filter_query">Task filter (Todoist query syntax)</label>
+      <input type="text" id="filter_query" name="filter_query"
+        value="{{ cfg.filter_query }}" placeholder="e.g. #Work &amp; @next   (empty = all active tasks)">
+      <p class="muted" style="margin: 4px 0 0;">
+        Restricts which tasks the module scans. Recurring-only is always
+        enforced on top. Syntax reference:
+        <a href="https://todoist.com/help/articles/introduction-to-filters-V98wIH" target="_blank" rel="noopener">Todoist filters</a>.
+      </p>
+    </div>
+
+    <div style="margin-top: 16px;">
       <button type="submit">Save configuration</button>
     </div>
   </form>

@@ -70,6 +70,29 @@ Activity view stays readable:
 
 Levels: `info` (default), `warning`, `error`. Keep the set small.
 
+## Scoping with a Todoist filter query
+
+Modules that scan tasks should support an optional
+[Todoist filter query](https://todoist.com/help/articles/introduction-to-filters-V98wIH)
+so the user can limit scope to specific projects, labels, or ad-hoc rules
+(e.g. `#Work & @next`, `!@waiting & p2`).
+
+**Convention** — the config key is `filter_query: str`, default `""`.
+Empty / whitespace-only means "all active tasks". Fetch tasks via
+`client.fetch_tasks(cfg["filter_query"])`; the client picks between the
+Sync full-pull and the `/api/v1/tasks/filter` endpoint. Validation is
+server-side: a malformed query surfaces as a `sync_error` at run time
+rather than a form-level 400.
+
+**Module-specific predicates stack on top.** `recurring_hygiene` still
+filters the result to `due_is_recurring` after the filter query runs — the
+query narrows the pool, the module's own logic narrows further. Document
+this in the module UI so users don't expect the filter alone to change
+behavior.
+
+Include `filter_query` in the module's `run` summary event so the activity
+log shows what was scanned.
+
 ## Config validation
 
 Validate in `set_config()`, not in the HTTP handler. The handler should be a

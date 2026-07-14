@@ -26,6 +26,8 @@ DEFAULT_CONFIG = {
     "dry_run": True,
     "schedule_cron": "0 6 * * *",   # daily 06:00 local
     "keep_events_days": 30,
+    "filter_query": "",     # Todoist filter query; empty = all active tasks.
+                            # Recurring-only is always enforced on top.
 }
 
 
@@ -50,6 +52,7 @@ def set_config(patch: dict) -> dict:
     current["keep_events_days"] = max(1, int(current["keep_events_days"]))
     if current["action"] not in ("report", "reschedule"):
         current["action"] = "report"
+    current["filter_query"] = str(current.get("filter_query") or "").strip()
     db.kv_set(CONFIG_KEY, current)
     return current
 
@@ -83,7 +86,7 @@ def run(client: TodoistClient, *, today: date | None = None) -> RunResult:
     today = today or date.today()
 
     try:
-        tasks = client.all_tasks()
+        tasks = client.fetch_tasks(cfg["filter_query"])
     except TodoistError as exc:
         db.log_event(MODULE, "sync_error", level="error", detail=str(exc))
         raise
@@ -98,6 +101,7 @@ def run(client: TodoistClient, *, today: date | None = None) -> RunResult:
                 "scanned": len(tasks),
                 "candidates": 0,
                 "grace_days": cfg["grace_days"],
+                "filter_query": cfg["filter_query"],
                 "dry_run": cfg["dry_run"],
                 "action": cfg["action"],
             },
@@ -143,6 +147,7 @@ def run(client: TodoistClient, *, today: date | None = None) -> RunResult:
             "candidates": len(candidates),
             "rescheduled": rescheduled,
             "grace_days": cfg["grace_days"],
+            "filter_query": cfg["filter_query"],
             "dry_run": cfg["dry_run"],
             "action": cfg["action"],
         },
