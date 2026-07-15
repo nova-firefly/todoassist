@@ -1,8 +1,8 @@
 """Minimal Todoist API client.
 
-Only what the recurring-hygiene module + settings page need:
-  - GET  /api/v1/sync          — pull tasks (full or delta)
-  - POST /api/v1/sync          — command batch (item_update with due_string)
+Covers the endpoints the existing modules + settings page need:
+  - GET  /api/v1/sync          — pull tasks and reminders (full or delta)
+  - POST /api/v1/sync          — command batch (item_update, reminder_add)
   - GET  /api/v1/user          — verify token, fetch account metadata
   - GET  /api/v1/tasks/filter  — filter-query scoped task pull
 
@@ -46,10 +46,12 @@ class Task:
     due_is_recurring: bool
     due_timezone: str | None
     checked: bool
+    labels: tuple[str, ...]
 
     @classmethod
     def from_api(cls, raw: dict) -> "Task":
         due = raw.get("due") or {}
+        labels = tuple(str(x) for x in (raw.get("labels") or []))
         return cls(
             id=str(raw["id"]),
             content=raw.get("content", ""),
@@ -59,7 +61,59 @@ class Task:
             due_is_recurring=bool(due.get("is_recurring")),
             due_timezone=due.get("timezone"),
             checked=bool(raw.get("checked")),
+            labels=labels,
         )
+
+
+@dataclass(frozen=True)
+class Reminder:
+    id: str
+    item_id: str
+    type: str                    # "location" | "relative" | "absolute"
+    loc_lat: float | None
+    loc_long: float | None
+    loc_trigger: str | None      # "on_enter" | "on_leave"
+    radius: int | None
+    name: str | None
+
+    @classmethod
+    def from_api(cls, raw: dict) -> "Reminder":
+        def _float(v: Any) -> float | None:
+            if v is None or v == "":
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        def _int(v: Any) -> int | None:
+            if v is None or v == "":
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
+        return cls(
+            id=str(raw["id"]),
+            item_id=str(raw.get("item_id", "")),
+            type=str(raw.get("type", "")),
+            loc_lat=_float(raw.get("loc_lat")),
+            loc_long=_float(raw.get("loc_long")),
+            loc_trigger=raw.get("loc_trigger") or None,
+            radius=_int(raw.get("radius")),
+            name=raw.get("name") or None,
+        )
+
+
+@dataclass(frozen=True)
+class LocationReminderSpec:
+    item_id: str
+    name: str
+    loc_lat: float
+    loc_long: float
+    loc_trigger: str             # "on_enter" | "on_leave"
+    radius: int
 
 
 class TodoistClient:
@@ -151,6 +205,59 @@ class TodoistClient:
         """
         q = (filter_query or "").strip()
         return self.tasks_by_filter(q) if q else self.all_tasks()
+
+    def fetch_reminders(self) -> list[Reminder]:
+        """Pull all reminders via the Sync API. Returns location-type only."""
+        data = self._request(
+            "POST",
+            "/sync",
+            data={
+                "sync_token": "*",
+                "resource_types": json.dumps(["reminders"]),
+            },
+        )
+        raw = data.get("reminders", []) or []
+        out: list[Reminder] = []
+        for r in raw:
+            if r.get("is_deleted"):
+                continue
+            if r.get("type") != "location":
+                continue
+            out.append(Reminder.from_api(r))
+        return out
+
+    def add_location_reminders(self, specs: Iterable[LocationReminderSpec]) -> dict:
+        """Attach location reminders to items via the Sync API command batch."""
+        commands = []
+        for s in specs:
+            commands.append(
+                {
+                    "type": "reminder_add",
+                    "temp_id": str(uuid.uuid4()),
+                    "uuid": str(uuid.uuid4()),
+                    "args": {
+                        "item_id": s.item_id,
+                        "type": "location",
+                        "name": s.name,
+                        "loc_lat": str(s.loc_lat),
+                        "loc_long": str(s.loc_long),
+                        "loc_trigger": s.loc_trigger,
+                        "radius": s.radius,
+                    },
+                }
+            )
+        if not commands:
+            return {"sync_status": {}}
+        data = self._request(
+            "POST",
+            "/sync",
+            data={"commands": json.dumps(commands)},
+        )
+        status = data.get("sync_status", {})
+        failed = {k: v for k, v in status.items() if v != "ok"}
+        if failed:
+            log.warning("Todoist reported %d failed command(s): %s", len(failed), failed)
+        return data
 
     def reschedule_recurring_to_today(self, task_ids: Iterable[str]) -> dict:
         """Move a recurring task's next due date to today, preserving recurrence.

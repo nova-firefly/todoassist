@@ -5,6 +5,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import ModuleType
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,7 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, recurring_hygiene
+from . import db, location_tag_reminders, recurring_hygiene
 from .todoist import TodoistClient, TodoistError
 
 log = logging.getLogger("todoassist")
@@ -61,13 +62,21 @@ scheduler = BackgroundScheduler(timezone="UTC")
 
 
 def _run_recurring_hygiene_job() -> None:
-    cfg = recurring_hygiene.get_config()
+    _run_module_job(recurring_hygiene)
+
+
+def _run_location_tag_reminders_job() -> None:
+    _run_module_job(location_tag_reminders)
+
+
+def _run_module_job(module: ModuleType) -> None:
+    cfg = module.get_config()
     if not cfg["enabled"]:
         return
     tok = load_token()
     if not tok:
         db.log_event(
-            recurring_hygiene.MODULE,
+            module.MODULE,
             "skipped",
             level="warning",
             detail="no Todoist token configured",
@@ -75,33 +84,40 @@ def _run_recurring_hygiene_job() -> None:
         return
     try:
         with TodoistClient(tok) as client:
-            recurring_hygiene.run(client)
+            module.run(client)
     except Exception as exc:  # noqa: BLE001
-        log.exception("recurring hygiene scheduled run failed")
+        log.exception("%s scheduled run failed", module.MODULE)
         db.log_event(
-            recurring_hygiene.MODULE,
+            module.MODULE,
             "run_error",
             level="error",
             detail=str(exc),
         )
 
 
+_MODULE_JOBS = (
+    (recurring_hygiene, _run_recurring_hygiene_job),
+    (location_tag_reminders, _run_location_tag_reminders_job),
+)
+
+
 def reload_schedule() -> None:
-    cfg = recurring_hygiene.get_config()
-    job_id = f"job.{recurring_hygiene.MODULE}"
-    existing = scheduler.get_job(job_id)
-    if existing:
-        existing.remove()
-    if not cfg["enabled"]:
-        return
-    trigger = CronTrigger.from_crontab(cfg["schedule_cron"])
-    scheduler.add_job(
-        _run_recurring_hygiene_job,
-        trigger=trigger,
-        id=job_id,
-        max_instances=1,
-        coalesce=True,
-    )
+    for module, job_func in _MODULE_JOBS:
+        job_id = f"job.{module.MODULE}"
+        existing = scheduler.get_job(job_id)
+        if existing:
+            existing.remove()
+        cfg = module.get_config()
+        if not cfg["enabled"]:
+            continue
+        trigger = CronTrigger.from_crontab(cfg["schedule_cron"])
+        scheduler.add_job(
+            job_func,
+            trigger=trigger,
+            id=job_id,
+            max_instances=1,
+            coalesce=True,
+        )
 
 
 # --------------------------------------------------------------------------
@@ -259,6 +275,99 @@ async def module_run_now() -> RedirectResponse:
     except TodoistError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return RedirectResponse(url="/modules/recurring-hygiene", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Modules — Location tag reminders
+# --------------------------------------------------------------------------
+
+_LTR_URL = "/modules/location-tag-reminders"
+
+
+@app.get(_LTR_URL, response_class=HTMLResponse)
+async def ltr_page(request: Request) -> HTMLResponse:
+    cfg = location_tag_reminders.get_config()
+    events = db.recent_events(module=location_tag_reminders.MODULE, limit=100)
+    return templates.TemplateResponse(
+        request,
+        "module_location_tag_reminders.html",
+        {
+            "cfg": cfg,
+            "events": events,
+            "has_token": load_token() is not None,
+        },
+    )
+
+
+@app.post(_LTR_URL + "/config")
+async def ltr_save_config(
+    enabled: str | None = Form(None),
+    dry_run: str | None = Form(None),
+    schedule_cron: str = Form(...),
+    keep_events_days: int = Form(...),
+    filter_query: str = Form(""),
+) -> RedirectResponse:
+    try:
+        CronTrigger.from_crontab(schedule_cron)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid cron: {exc}") from exc
+    location_tag_reminders.set_config(
+        {
+            "enabled": enabled == "on",
+            "dry_run": dry_run == "on",
+            "schedule_cron": schedule_cron,
+            "keep_events_days": keep_events_days,
+            "filter_query": filter_query,
+        }
+    )
+    reload_schedule()
+    return RedirectResponse(url=_LTR_URL, status_code=303)
+
+
+@app.post(_LTR_URL + "/mappings/add")
+async def ltr_mapping_add(
+    label: str = Form(...),
+    name: str = Form(""),
+    lat: float = Form(...),
+    long: float = Form(...),
+    radius: int = Form(100),
+    trigger: str = Form("on_enter"),
+) -> RedirectResponse:
+    cfg = location_tag_reminders.get_config()
+    mappings = list(cfg["mappings"])
+    mappings.append(
+        {
+            "label": label,
+            "name": name,
+            "lat": lat,
+            "long": long,
+            "radius": radius,
+            "trigger": trigger,
+        }
+    )
+    location_tag_reminders.set_config({"mappings": mappings})
+    return RedirectResponse(url=_LTR_URL, status_code=303)
+
+
+@app.post(_LTR_URL + "/mappings/delete")
+async def ltr_mapping_delete(index: int = Form(...)) -> RedirectResponse:
+    cfg = location_tag_reminders.get_config()
+    mappings = list(cfg["mappings"])
+    if 0 <= index < len(mappings):
+        mappings.pop(index)
+        location_tag_reminders.set_config({"mappings": mappings})
+    return RedirectResponse(url=_LTR_URL, status_code=303)
+
+
+@app.post(_LTR_URL + "/run")
+async def ltr_run_now() -> RedirectResponse:
+    tok = require_token()
+    try:
+        with TodoistClient(tok) as client:
+            location_tag_reminders.run(client)
+    except TodoistError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return RedirectResponse(url=_LTR_URL, status_code=303)
 
 
 # --------------------------------------------------------------------------
