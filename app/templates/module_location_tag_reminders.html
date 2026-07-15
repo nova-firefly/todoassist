@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Location tag reminders — todoassist{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Location tag reminders</h2>
+  <p class="muted">
+    Watches for tasks carrying a configured Todoist label and attaches a
+    location-based reminder to them via the Todoist Sync API. Idempotent —
+    won't create duplicates. Removing a label from a task does <strong>not</strong>
+    delete the reminder.
+  </p>
+
+  {% if not has_token %}
+    <p><span class="badge err">no token</span> Add a Todoist token in <a href="/settings">Settings</a> first.</p>
+  {% endif %}
+
+  <form method="post" action="/modules/location-tag-reminders/config">
+    <div class="checkbox">
+      <input type="checkbox" id="enabled" name="enabled" {% if cfg.enabled %}checked{% endif %}>
+      <label for="enabled" style="margin: 0;">Enable scheduled runs</label>
+    </div>
+
+    <div class="checkbox">
+      <input type="checkbox" id="dry_run" name="dry_run" {% if cfg.dry_run %}checked{% endif %}>
+      <label for="dry_run" style="margin: 0;">Dry-run (log candidates only, never create reminders)</label>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="schedule_cron">Schedule (cron, UTC)</label>
+        <input type="text" id="schedule_cron" name="schedule_cron"
+          value="{{ cfg.schedule_cron }}" required>
+      </div>
+      <div>
+        <label for="keep_events_days">Keep event log (days)</label>
+        <input type="number" id="keep_events_days" name="keep_events_days" min="1" max="3650"
+          value="{{ cfg.keep_events_days }}" required>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <label for="filter_query">Task filter (Todoist query syntax)</label>
+      <input type="text" id="filter_query" name="filter_query"
+        value="{{ cfg.filter_query }}" placeholder="e.g. #Work   (empty = all active tasks)">
+      <p class="muted" style="margin: 4px 0 0;">
+        Narrows the pool of tasks scanned. Label matching still runs on top.
+      </p>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <button type="submit">Save configuration</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Label → location mappings</h2>
+  {% if cfg.mappings %}
+    <table>
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Name</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+          <th>Radius (m)</th>
+          <th>Trigger</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in cfg.mappings %}
+          <tr>
+            <td><code>@{{ m.label }}</code></td>
+            <td>{{ m.name }}</td>
+            <td>{{ m.lat }}</td>
+            <td>{{ m['long'] }}</td>
+            <td>{{ m.radius }}</td>
+            <td>{{ m.trigger }}</td>
+            <td>
+              <form method="post" action="/modules/location-tag-reminders/mappings/delete" class="inline">
+                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                <button type="submit" class="secondary">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No mappings yet.</p>
+  {% endif %}
+
+  <h3 style="font-size: 14px; margin-top: 20px;">Add mapping</h3>
+  <form method="post" action="/modules/location-tag-reminders/mappings/add">
+    <div class="row">
+      <div>
+        <label for="m_label">Label</label>
+        <input type="text" id="m_label" name="label" placeholder="home" required>
+      </div>
+      <div>
+        <label for="m_name">Reminder name</label>
+        <input type="text" id="m_name" name="name" placeholder="Home">
+      </div>
+      <div>
+        <label for="m_trigger">Trigger</label>
+        <select id="m_trigger" name="trigger">
+          <option value="on_enter" selected>On enter</option>
+          <option value="on_leave">On leave</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 12px;">
+      <div>
+        <label for="m_lat">Latitude</label>
+        <input type="text" id="m_lat" name="lat" placeholder="37.7749" required>
+      </div>
+      <div>
+        <label for="m_long">Longitude</label>
+        <input type="text" id="m_long" name="long" placeholder="-122.4194" required>
+      </div>
+      <div>
+        <label for="m_radius">Radius (metres)</label>
+        <input type="number" id="m_radius" name="radius" min="10" max="10000" value="100" required>
+      </div>
+    </div>
+    <div style="margin-top: 16px;">
+      <button type="submit">Add mapping</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Run now</h2>
+  <p class="muted">
+    Executes one pass immediately using the current configuration (respects
+    dry-run). Requires a Todoist token.
+  </p>
+  <form method="post" action="/modules/location-tag-reminders/run">
+    <button type="submit" {% if not has_token %}disabled{% endif %}>Run now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Module activity</h2>
+  {% if events %}
+    <table>
+      <thead><tr><th>Time (UTC)</th><th>Action</th><th>Task</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for e in events %}
+          <tr>
+            <td>{{ e.ts }}</td>
+            <td>{% if e.level == 'error' %}<span class="badge err">{{ e.action }}</span>{% else %}{{ e.action }}{% endif %}</td>
+            <td>{% if e.task_id %}<code>{{ e.task_id }}</code>{% endif %}</td>
+            <td>{% if e.detail %}<code>{{ e.detail }}</code>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No runs yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
