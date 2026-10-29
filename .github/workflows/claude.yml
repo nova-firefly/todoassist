@@ -50,8 +50,14 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Only feed Claude comments from the owner and bots — on public repos anyone
+          # can comment, and that text would otherwise reach an agent with Bash.
+          include_comments_by_actor: "kjsb25,*[bot]"
           additional_permissions: |
             actions: read
+          # The action's default tool set is read-only + git (no Edit/Write), so any
+          # code change fails with a permission denial. The runner is a throwaway VM.
           claude_args: |
             --max-turns 60
+            --allowedTools "Edit,MultiEdit,Write,Bash"
             --append-system-prompt "Follow the repo's CLAUDE.md if present. Never commit secrets, tokens, real .env files, or private hostnames/IPs."
